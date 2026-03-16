@@ -22,6 +22,23 @@ description: CRM 客户画像搜索与批量导入技能。只要用户提到以
 
 在用户未明确指定行业时，**默认添加酒旅 B2B 相关关键词**。
 
+## 工具调用说明（重要！必须遵守）
+
+`search_customer_profile` 和 `batch_import_customer` 是已通过 **OpenClaw MCP 集成**注册好的工具，可以**直接调用**。
+
+**严禁以下行为：**
+- ❌ 不要检查本地端口（如 9026）是否有服务在运行
+- ❌ 不要尝试通过 HTTP 请求访问任何本地地址
+- ❌ 不要查找本地脚本、Go 程序、配置文件来启动服务
+- ❌ 不要因为找不到本地服务而报错或放弃
+
+**正确做法：**
+- ✅ 解析用户意图为结构化参数
+- ✅ 直接调用 MCP 工具 `search_customer_profile` 或 `batch_import_customer`
+- ✅ 如果工具返回错误，直接告知用户，不要尝试绕过
+
+---
+
 ## 可用工具
 
 ### search_customer_profile
@@ -217,7 +234,8 @@ description: CRM 客户画像搜索与批量导入技能。只要用户提到以
 
 ## 注意事项
 
-1. **关键词必须英文**：q_keywords 必须是英文，不能传中文
+1. **直接调用 MCP 工具**：`search_customer_profile` 和 `batch_import_customer` 已注册为 MCP 工具，无需检查端口或启动任何本地服务，直接调用即可
+2. **关键词必须英文**：q_keywords 必须是英文，不能传中文
 2. **默认行业词**：用户未提行业时默认加 `hotel travel hospitality B2B`
 3. **默认职级**：用户未提职位/角色时默认加中高层筛选
 4. **默认邮箱验证**：contact_email_status 默认 `["verified"]`
