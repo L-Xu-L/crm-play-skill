@@ -24,7 +24,7 @@ description: CRM 客户画像搜索与批量导入技能。只要用户提到以
 
 ## 工具调用说明（重要！必须遵守）
 
-`search_customer_profile` 和 `batch_import_customer` 是已通过 **OpenClaw MCP 集成**注册好的工具，可以**直接调用**。
+`search_customer_profile` 和 `batch_import_customer` 是已通过 **OpenClaw MCP 集成**注册好的工具（MCP Server: `http://YOUR_CRM_HOST:9026/mcp`），可以**直接调用**。
 
 **严禁以下行为：**
 - ❌ 不要检查本地端口（如 9026）是否有服务在运行
