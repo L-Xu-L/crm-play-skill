@@ -1,204 +1,264 @@
-# CRM OpenClaw Skill 使用指南
+---
+name: crm-customer-import
+description: CRM 客户画像搜索与批量导入技能。只要用户提到以下任何一项就必须使用此技能：找客户、搜客户、搜索客户、客户画像、潜在客户、目标客户、客户列表、录入CRM、导入客户、批量导入、添加客户、找一批xx客户、xx地区的客户、xx行业的客户。当用户说「帮我找一批日本客户」「有没有做酒店的客户」「把这些录入系统」「导入CRM」「找年采购额大的客户」等类似表达时，立即使用此技能。即使用户没有明确说「CRM」或「画像」，只要涉及寻找、搜索、导入客户的意图，都要使用此技能。
+metadata.openclaw: {"primaryEnv": "user_key.txt", "mcpServer": "http://39.108.114.224:9059"}
+---
 
-## 概述
+# CRM 客户画像搜索与批量导入
 
-本技能为 CRM 系统提供客户画像搜索与批量导入功能，可通过 OpenClaw 钉钉助手机器人使用。
+通过结构化条件搜索酒旅行业的潜在 B2B 客户，确认后批量导入 CRM 系统。
 
-## 功能
-
-1. **搜索客户画像**：根据自然语言描述搜索匹配的潜在客户
-2. **批量导入客户**：将搜索结果批量导入 CRM 作为潜在客户
-
-## 目录结构
-
-```
-skill/
-├── SKILL.md              # Skill 主文件（OpenClaw 加载）
-├── README.md             # 本文档
-└── evals/
-    ├── evals.json        # 测试用例
-    └── README.md         # 测试说明
-```
-
-## 部署步骤
-
-### 1. 启动 CRM MCP Server
-
-CRM 服务已集成 MCP Server，有两种启动方式：
-
-#### 方式 A：与主服务一起启动（推荐）
-
-MCP Server 默认在主服务启动时一并启动，监听 `:9026` 端口。
-
-#### 方式 B：独立启动
-
-```bash
-cd /path/to/crm
-go run cmd/mcp/main.go -p 9026
-```
-
-### 2. 配置 OpenClaw
-
-在 OpenClaw 的 `~/.openclaw/openclaw.json` 中添加 MCP Server 配置：
-
-```json
-{
-  "mcpServers": {
-    "crm": {
-      "url": "http://your-crm-server:9026/mcp",
-      "transport": "streamable-http"
-    }
-  }
-}
-```
-
-如果 OpenClaw 和 CRM 在同一台 ECS：
-```json
-{
-  "mcpServers": {
-    "crm": {
-      "url": "http://127.0.0.1:9026/mcp",
-      "transport": "streamable-http"
-    }
-  }
-}
-```
-
-### 3. 安装 Skill
-
-将 `skill/SKILL.md` 文件复制到 OpenClaw 的技能目录：
-
-```bash
-# 方式 A：直接复制
-cp skill/SKILL.md ~/.openclaw/skills/crm-customer-import/SKILL.md
-
-# 方式 B：通过 ClawHub（如果已发布）
-clawhub install crm-customer-import
-```
-
-### 4. 重启 OpenClaw 网关
-
-```bash
-openclaw gateway restart
-```
-
-### 5. 验证
-
-```bash
-# 检查 MCP Server 是否正常
-openclaw mcp list
-
-# 应该看到：
-# SERVER    STATUS    TOOLS   TRANSPORT
-# crm       running   2       streamable-http
-```
-
-## 使用方式
-
-在钉钉中与 OpenClaw 机器人对话：
+## 核心流程
 
 ```
-用户：帮我找一批日本地区的客户
-
-机器人：好的，我来帮您搜索日本地区的客户。
-       
-       根据您的画像「日本地区」，找到以下 10 位匹配客户：
-       
-       1. 东京旅游株式会社 (相似度: 95%)
-          联系人：田中太郎
-          邮箱：tanaka@tokyo-travel.jp
-          ...
-       
-       请问是否要将这些客户录入 CRM 系统？
-
-用户：好的，录入
-
-机器人：导入完成！成功 10 条，失败 0 条。
+1. 用户描述画像 → 2. 你解析为结构化参数 → 3. 调用搜索 → 4. 展示列表 → 5. 用户确认 → 6. 批量导入
 ```
 
-## MCP Tools
+## 业务背景（重要！）
 
-| Tool | 描述 |
-|------|------|
-| `search_customer_profile` | 根据画像描述搜索匹配的客户 |
-| `batch_import_customer` | 将客户批量导入 CRM 作为潜在客户 |
+本公司是 **酒旅行业 B2B 服务商**，搜索的目标客户是：
+- **行业**：酒店(hotel)、旅游(travel/tourism)、酒旅(hospitality)、OTA、旅行社(travel agency)
+- **业务类型**：B2B 批发、分销、代理
+- **目标联系人**：采购决策者、商务合作负责人
 
-## 配置说明
+在用户未明确指定行业时，**默认添加酒旅 B2B 相关关键词**。
 
-### 环境变量
+## 工具调用说明（重要！必须遵守）
 
-| 变量 | 说明 | 默认值 |
-|------|------|--------|
-| `MCP_PORT` | MCP Server 端口 | 9026 |
+`search_customer_profile` 和 `batch_import_customer` 是已通过 **OpenClaw MCP 集成**注册好的工具（MCP Server: `http://39.108.114.224:9059`），可以**直接调用**。
 
-### 端口
+**严禁以下行为：**
+- ❌ 不要检查本地端口（如 9026）是否有服务在运行
+- ❌ 不要尝试通过 HTTP 请求访问任何本地地址
+- ❌ 不要查找本地脚本、Go 程序、配置文件来启动服务
+- ❌ 不要因为找不到本地服务而报错或放弃
 
-| 端口 | 服务 |
-|------|------|
-| 9025 | CRM 主服务（HTTP API） |
-| 9026 | CRM MCP Server |
+**正确做法：**
+- ✅ 解析用户意图为结构化参数
+- ✅ 直接调用 MCP 工具 `search_customer_profile` 或 `batch_import_customer`
+- ✅ 如果工具返回错误，直接告知用户，不要尝试绕过
+- ✅ 如果工具返回 `unauthorized`，删除 `{baseDir}/user_key.txt`，引导用户重新获取 user_key
+
+---
+
+## Setup
+
+调用任何工具前，**必须先**完成用户身份验证。
+
+### Step 1 — User Key
+
+1. 读取 `{baseDir}/user_key.txt`
+2. 如果文件**不存在或为空** — 不要调用任何工具，告知用户：
+   > "在开始之前，需要先验证你的身份。请前往 https://aauth-170125614655.asia-northeast1.run.app/dashboard 用 Google 账号登录，复制你的 `user_key`（格式：`uk_xxxxxxxx`），然后告诉我。"
+   用户提供 key 后，保存到 `{baseDir}/user_key.txt`，再继续。
+3. 如果文件**存在且有内容** — 将其值作为所有工具调用的 `user_key` 参数，不再询问用户。
+4. 如果任何工具返回 `unauthorized` — 说明 key 无效或已过期，删除 `{baseDir}/user_key.txt`，重复步骤 2。
+
+---
+
+## 可用工具
+
+### search_customer_profile
+
+通过结构化条件搜索潜在客户，自动富化联系方式。
+
+**参数（全部可选，但至少提供 1 个筛选条件）：**
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| user_key | string | 从 `{baseDir}/user_key.txt` 读取 |
+| q_keywords | string | 搜索关键词，多个用空格分隔。**默认应包含酒旅行业词** |
+| person_titles | string[] | 职位过滤，如 `["Sales Manager", "Business Development"]` |
+| person_locations | string[] | 人员所在地，如 `["Japan", "California"]` |
+| organization_locations | string[] | 公司总部所在地，如 `["Tokyo", "Singapore"]` |
+| person_seniorities | string[] | 职级，可选值: `owner`, `founder`, `c_suite`, `partner`, `vp`, `head`, `director`, `manager`, `senior`, `entry` |
+| contact_email_status | string[] | 邮箱状态，默认 `["verified"]` |
+| organization_num_employees_ranges | string[] | 员工数范围，如 `["50,200"]` |
+| revenue_range_min | int | 公司最低年营收（美元） |
+| revenue_range_max | int | 公司最高年营收（美元） |
+| per_page | int | 每页数量，1-100，默认 10 |
+| page | int | 页码，从 1 开始 |
+
+**返回：** 客户列表（公司名称、联系人姓名、邮箱、电话、区号、国家、地址、备注）
+
+### batch_import_customer
+
+将客户批量导入 CRM 作为潜在客户。
+
+**参数：**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| user_key | string | 是 | 从 `{baseDir}/user_key.txt` 读取 |
+| customers | array | 是 | 客户列表，从 search_customer_profile 返回的结果中获取 |
+
+每个客户包含：
+- `name`: 公司名称（必填）
+- `contact_name`: 联系人姓名（必填）
+- `contact_email`: 联系人邮箱（必填）
+- `contact_phone`: 联系人电话（必填）
+- `contact_phone_prefix`: 电话区号（可选）
+- `country_code`: 国家编码如 US/JP/CN（可选）
+- `address`: 地址（可选）
+- `remark`: 备注（可选）
+
+**返回：** 成功数、失败数、失败明细
+
+---
+
+## 参数解析指南（你必须遵守）
+
+当用户用自然语言描述画像时，你需要将其拆解为结构化参数。以下是解析规则：
+
+### 1. 关键词 (q_keywords)
+
+用户提到的行业、业务模式等**无法映射到其他结构化字段**的描述，放入 q_keywords。
+
+**默认规则：** 若用户未指定行业，q_keywords 至少包含 `hotel travel hospitality B2B`。
+
+| 用户表达 | q_keywords |
+|----------|-----------|
+| 酒店客户 | `hotel hospitality B2B` |
+| 旅游行业 | `travel tourism B2B` |
+| OTA 客户 | `OTA online travel agency B2B` |
+| 做酒店批发的 | `hotel wholesale B2B distribution` |
+| （未提及行业） | `hotel travel hospitality B2B` |
+
+### 2. 地区 → person_locations 或 organization_locations
+
+地区描述优先映射为 `organization_locations`（按公司总部所在地搜索），如果用户明确说"人在xx"则用 `person_locations`。
+
+| 用户表达 | 参数 | 值 |
+|----------|------|-----|
+| 日本客户 | organization_locations | `["Japan"]` |
+| 东南亚地区 | organization_locations | `["Singapore", "Thailand", "Vietnam", "Indonesia", "Malaysia", "Philippines"]` |
+| 欧洲客户 | organization_locations | `["United Kingdom", "Germany", "France", "Spain", "Italy", "Netherlands"]` |
+| 美国西海岸 | organization_locations | `["California", "Oregon", "Washington"]` |
+| 中东客户 | organization_locations | `["United Arab Emirates", "Saudi Arabia"]` |
+
+### 3. 职位/角色 → person_titles + person_seniorities
+
+| 用户表达 | person_titles | person_seniorities |
+|----------|--------------|-------------------|
+| 采购负责人 | `["Purchasing Manager", "Procurement Director", "Buyer"]` | `["manager", "director", "head"]` |
+| 商务合作 | `["Business Development", "Partnership Manager", "Sales Manager"]` | `["manager", "director"]` |
+| 老板/决策者 | `["CEO", "General Manager", "Owner"]` | `["owner", "founder", "c_suite"]` |
+| 销售总监 | `["Sales Director", "VP of Sales"]` | `["director", "vp"]` |
+| （未指定）| 不填 | `["manager", "director", "vp", "head", "c_suite"]` |
+
+### 4. 规模/营收 → 员工数或营收范围
+
+| 用户表达 | 参数 | 值 |
+|----------|------|-----|
+| 大型企业 | organization_num_employees_ranges | `["500,10000"]` |
+| 中小企业 | organization_num_employees_ranges | `["10,500"]` |
+| 年营收超过100万美元 | revenue_range_min | `1000000` |
+| 年营收500万以上 | revenue_range_min | `5000000` |
+
+### 5. 数量控制
+
+| 用户表达 | per_page |
+|----------|---------|
+| 找5个 | 5 |
+| 找一批 / 帮我找些 | 10 |
+| 多找一些 | 25 |
+| 找50个 | 50 |
+
+---
+
+## 使用指南
+
+### 步骤 1：理解并解析
+
+收到用户的画像描述后，按上述规则解析为结构化参数。**不要直接把中文传给 q_keywords**，必须翻译为英文关键词。
+
+### 步骤 2：调用搜索并展示结果
+
+调用 `search_customer_profile` 后，用以下格式展示：
+
+```
+根据您的需求，搜索条件：
+- 关键词：{q_keywords}
+- 地区：{locations}
+- 职级：{seniorities}
+
+共找到 {total} 条匹配记录，本次获取 {count} 条：
+
+1. **{公司名称}**
+   - 联系人：{contact_name}
+   - 职位/行业：{remark}
+   - 邮箱：{contact_email}
+   - 电话：{contact_phone_prefix} {contact_phone}
+   - 地区：{country_code}
+   - 地址：{address}
+
+2. ...
+
+是否要将这些客户录入 CRM 系统？也可以输入「下一页」查看更多。
+```
+
+### 步骤 3：确认导入
+
+用户回复肯定词（「是」「好的」「录入」「导入」「确认」）时，调用 `batch_import_customer`，将 search 返回的客户列表**原样**传入。
+
+### 步骤 4：反馈结果
+
+```
+导入完成！成功 {success} 条，失败 {fail} 条。
+{如有失败，列出失败明细及原因}
+```
+
+---
+
+## 示例对话
+
+### 示例 1：基础搜索
+
+**用户**：帮我找一批日本地区的酒店客户
+
+**你的解析**：
+- q_keywords: `"hotel hospitality B2B"`
+- organization_locations: `["Japan"]`
+- person_seniorities: `["manager", "director", "vp", "head", "c_suite"]`
+- contact_email_status: `["verified"]`
+- per_page: `10`
+
+**调用**：`search_customer_profile(q_keywords="hotel hospitality B2B", organization_locations=["Japan"], person_seniorities=["manager", "director", "vp", "head", "c_suite"], per_page=10)`
+
+### 示例 2：带角色条件
+
+**用户**：找东南亚做酒店批发的采购负责人，要大公司的
+
+**你的解析**：
+- q_keywords: `"hotel wholesale B2B distribution"`
+- organization_locations: `["Singapore", "Thailand", "Vietnam", "Indonesia", "Malaysia", "Philippines"]`
+- person_titles: `["Purchasing Manager", "Procurement Director", "Buyer", "Sourcing Manager"]`
+- person_seniorities: `["manager", "director", "head"]`
+- organization_num_employees_ranges: `["500,10000"]`
+- per_page: `10`
+
+### 示例 3：翻页
+
+**用户**：下一页
+
+**你的操作**：使用与上次相同的参数，page 加 1
+
+### 示例 4：选择性导入
+
+**用户**：第 1、3、5 个录入 CRM
+
+**你的操作**：从搜索结果中提取第 1、3、5 条，调用 `batch_import_customer`
+
+---
 
 ## 注意事项
 
-1. **网络配置**：确保 OpenClaw 所在机器能访问 CRM 的 MCP 端口
-2. **邮箱去重**：系统按联系邮箱去重，重复邮箱会导入失败
-3. **必填字段**：客户名称、联系人、联系邮箱、联系电话为必填
-4. **Mock 数据**：当前搜索接口返回 Mock 数据，待接入真实画像 API 后替换
-
-## 后续扩展
-
-- [ ] 接入真实的客户画像搜索 API
-- [ ] 支持登录态，记录商务联系人
-- [ ] 支持从搜索结果中勾选部分客户导入
-- [ ] 支持更多客户字段（标签、区域等）
-
-## 故障排查
-
-### MCP Server 无法连接
-
-1. 检查 CRM 服务是否启动
-2. 检查端口是否被占用：`lsof -i :9026`
-3. 检查防火墙规则
-
-### 导入失败
-
-1. 检查必填字段是否完整
-2. 检查邮箱是否已存在
-3. 查看 CRM 服务日志
-
-### OpenClaw 无法识别 Skill
-
-1. 确认 SKILL.md 文件路径正确
-2. 重启 OpenClaw 网关：`openclaw gateway restart`
-3. 检查 OpenClaw 日志
-
-## 触发率验证
-
-### 使用 skill-creator 验证
-
-在 OpenClaw/Claude 中发送：
-
-```
-用 skill-creator 验证一下 crm-customer-import skill 的触发率
-```
-
-### 手动测试触发率
-
-发送以下测试消息，观察是否正确触发：
-
-| 测试消息 | 期望触发 |
-|----------|----------|
-| 帮我找一批日本地区的客户 | ✅ search_customer_profile |
-| 有没有做酒店的潜在客户 | ✅ search_customer_profile |
-| 好的，录入 | ✅ batch_import_customer |
-| 不用了 | ❌ 不触发 |
-
-详细测试用例见 `evals/evals.json`。
-
-### 优化触发率
-
-如果触发率不理想：
-
-```
-用 skill-creator 优化 crm-customer-import skill 的 description
-```
+1. **直接调用 MCP 工具**：`search_customer_profile` 和 `batch_import_customer` 已注册为 MCP 工具，无需检查端口或启动任何本地服务，直接调用即可
+2. **关键词必须英文**：q_keywords 必须是英文，不能传中文
+2. **默认行业词**：用户未提行业时默认加 `hotel travel hospitality B2B`
+3. **默认职级**：用户未提职位/角色时默认加中高层筛选
+4. **默认邮箱验证**：contact_email_status 默认 `["verified"]`
+5. **邮箱去重**：导入时系统按联系邮箱去重，已存在的邮箱会导入失败
+6. **必填字段**：导入时公司名称、联系人、邮箱、电话为必填
+7. **每次最多 10 条**：搜索+富化每次最多返回 10 条（受 API 限制），如需更多请翻页
+8. **Credits 消耗**：搜索免费，富化联系方式每人消耗 1 Credit
