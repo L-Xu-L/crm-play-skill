@@ -1,0 +1,9 @@
+{
+  "servers": {
+    "crm-customer-import": {
+      "type": "http",
+      "url": "http://39.108.114.224:9059",
+      "transport": "streamable-http"
+    }
+  }
+}
